@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Standort-Alarme</title>
+<title>Location alerts</title>
 <style>
   :root {
     --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280;
@@ -82,62 +82,199 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>📍 Standort-Alarme</h1>
+  <h1 id="pageTitle">📍 Location alerts</h1>
 
   <div class="card">
-    <label for="entity">Wenn dieses Gerät / diese Person …</label>
+    <label id="entityLabel" for="entity">If this device/person …</label>
     <select id="entity"></select>
 
-    <label>… folgendes tut</label>
+    <label id="eventLabel">… does the following</label>
     <div class="seg" id="eventSeg">
-      <button type="button" data-v="enter" class="on">betritt</button>
-      <button type="button" data-v="leave">verlässt</button>
+      <button type="button" data-v="enter" class="on">enters</button>
+      <button type="button" data-v="leave">leaves</button>
     </div>
 
-    <label for="zone">Zone</label>
+    <label id="zoneLabel" for="zone">Zone</label>
     <select id="zone"></select>
 
-    <label for="notify">Benachrichtigung senden an</label>
+    <label id="notifyLabel" for="notify">Send notification to</label>
     <select id="notify"></select>
 
-    <label>Wie oft?</label>
+    <label id="countLabel">How often?</label>
     <div class="stepper">
       <button type="button" id="minus">−</button>
       <div class="n" id="count">2</div>
       <button type="button" id="plus">+</button>
-      <span class="hint" style="margin:0">danach löscht sich die Regel selbst</span>
+      <span id="countHint" class="hint" style="margin:0">then the rule deletes itself</span>
     </div>
 
     <details>
-      <summary>Text anpassen (optional)</summary>
-      <label for="title">Titel</label>
-      <input type="text" id="title" placeholder="Standort-Alarm">
-      <label for="message">Nachricht</label>
-      <input type="text" id="message" placeholder="{person} hat {zone} {event}">
-      <div class="hint">Platzhalter: {person}, {zone}, {event} (betreten/verlassen)</div>
-      <label for="name">Name der Regel</label>
-      <input type="text" id="name" placeholder="wird automatisch erzeugt">
+      <summary id="advancedSummary">Customize text (optional)</summary>
+      <label id="titleLabel" for="title">Title</label>
+      <input type="text" id="title" placeholder="Location alert">
+      <label id="messageLabel" for="message">Message</label>
+      <input type="text" id="message" placeholder="{person} has {zone} {event}">
+      <div id="placeholderHint" class="hint">Placeholders: {person}, {zone}, {event} (entered/left)</div>
+      <label id="nameLabel" for="name">Rule name</label>
+      <input type="text" id="name" placeholder="will be generated automatically">
     </details>
 
-    <button class="primary" id="create">Regel erstellen</button>
+    <button class="primary" id="create">Create rule</button>
     <div class="err" id="err"></div>
   </div>
 
-  <h2>Aktiv</h2>
+  <h2 id="activeTitle">Active</h2>
   <div id="active"></div>
 
-  <h2 id="doneHead" style="display:none">Erledigt <button class="link" id="clearDone">alle entfernen</button></h2>
+  <h2 id="doneHead">Completed <button class="link" id="clearDone">remove all</button></h2>
   <div id="done"></div>
 
-  <h2>Verlauf</h2>
+  <h2 id="logTitle">History</h2>
   <div class="card log" id="log"></div>
 </div>
 
 <script>
+const translations = {
+  de: {
+    title: "Standort-Alarme",
+    pageTitle: "📍 Standort-Alarme",
+    entityLabel: "Wenn dieses Gerät / diese Person …",
+    eventLabel: "… folgendes tut",
+    zoneLabel: "Zone",
+    notifyLabel: "Benachrichtigung senden an",
+    countLabel: "Wie oft?",
+    countHint: "danach löscht sich die Regel selbst",
+    advancedSummary: "Text anpassen (optional)",
+    titleLabel: "Titel",
+    messageLabel: "Nachricht",
+    placeholderHint: "Platzhalter: {person}, {zone}, {event} (betreten/verlassen)",
+    nameLabel: "Name der Regel",
+    createRule: "Regel erstellen",
+    activeTitle: "Aktiv",
+    completed: "Erledigt",
+    removeAll: "alle entfernen",
+    logTitle: "Verlauf",
+    emptyActive: "Keine aktiven Regeln",
+    emptyLog: "Noch nichts passiert",
+    noDevices: "Keine Geräte gefunden",
+    noZones: "Keine Zonen gefunden",
+    noNotify: "Keine Notify-Dienste gefunden",
+    eventEnter: "betritt",
+    eventLeave: "verlässt",
+    statusDone: "fertig",
+    statusPaused: "pausiert",
+    statusRemaining: "noch {remaining}× von {total}",
+    resume: "▶ Fortsetzen",
+    pause: "⏸ Pausieren",
+    sendTest: "Test senden",
+    sent: "Gesendet ✓",
+    delete: "Löschen",
+    errorSelect: "Bitte alle Felder auswählen.",
+    haUnavailable: "Home Assistant nicht erreichbar: {message}",
+    footerLast: "Zuletzt: {time}",
+    noCompletedRules: "Keine erledigten Regeln",
+    titlePlaceholder: "Standort-Alarm",
+    messagePlaceholder: "{person} hat {zone} {event}",
+    namePlaceholder: "wird automatisch erzeugt",
+  },
+  en: {
+    title: "Location alerts",
+    pageTitle: "📍 Location alerts",
+    entityLabel: "If this device/person …",
+    eventLabel: "… does the following",
+    zoneLabel: "Zone",
+    notifyLabel: "Send notification to",
+    countLabel: "How often?",
+    countHint: "then the rule deletes itself",
+    advancedSummary: "Customize text (optional)",
+    titleLabel: "Title",
+    messageLabel: "Message",
+    placeholderHint: "Placeholders: {person}, {zone}, {event} (entered/left)",
+    nameLabel: "Rule name",
+    createRule: "Create rule",
+    activeTitle: "Active",
+    completed: "Completed",
+    removeAll: "remove all",
+    logTitle: "History",
+    emptyActive: "No active rules",
+    emptyLog: "Nothing happened yet",
+    noDevices: "No devices found",
+    noZones: "No zones found",
+    noNotify: "No notify services found",
+    eventEnter: "enters",
+    eventLeave: "leaves",
+    statusDone: "done",
+    statusPaused: "paused",
+    statusRemaining: "{remaining} of {total} left",
+    resume: "▶ Resume",
+    pause: "⏸ Pause",
+    sendTest: "Send test",
+    sent: "Sent ✓",
+    delete: "Delete",
+    errorSelect: "Please select all fields.",
+    haUnavailable: "Home Assistant is not reachable: {message}",
+    footerLast: "Last: {time}",
+    noCompletedRules: "No completed rules",
+    titlePlaceholder: "Location alert",
+    messagePlaceholder: "{person} has {zone} {event}",
+    namePlaceholder: "will be generated automatically",
+  }
+};
+
+function detectLocale() {
+  try {
+    const parentLang = window.parent && window.parent.document && window.parent.document.documentElement
+      ? window.parent.document.documentElement.lang
+      : "";
+    const raw = (parentLang || navigator.language || navigator.userLanguage || "").toLowerCase();
+    if (raw.startsWith("de")) return "de";
+  } catch (e) {
+    // Ignore cross-origin restrictions; default to English.
+  }
+  return "en";
+}
+
+const locale = detectLocale();
 const $ = (id) => document.getElementById(id);
 let opts = { entities: [], zones: [], notify: [] };
 let event = "enter";
 let count = 2;
+
+function t(key, vars = {}) {
+  const map = translations[locale] || translations.en;
+  const text = map[key] || translations.en[key] || key;
+  return Object.entries(vars).reduce((result, [k, v]) => result.replaceAll(`{${k}}`, String(v)), text);
+}
+
+function applyTranslations() {
+  document.documentElement.lang = locale;
+  document.title = t("title");
+  $("pageTitle").textContent = t("pageTitle");
+  $("entityLabel").textContent = t("entityLabel");
+  $("eventLabel").textContent = t("eventLabel");
+  $("zoneLabel").textContent = t("zoneLabel");
+  $("notifyLabel").textContent = t("notifyLabel");
+  $("countLabel").textContent = t("countLabel");
+  $("countHint").textContent = t("countHint");
+  $("advancedSummary").textContent = t("advancedSummary");
+  $("titleLabel").textContent = t("titleLabel");
+  $("messageLabel").textContent = t("messageLabel");
+  $("placeholderHint").textContent = t("placeholderHint");
+  $("nameLabel").textContent = t("nameLabel");
+  $("create").textContent = t("createRule");
+  $("activeTitle").textContent = t("activeTitle");
+  $("doneHead").firstChild.textContent = `${t("completed")} `;
+  $("clearDone").textContent = t("removeAll");
+  $("logTitle").textContent = t("logTitle");
+
+  $("title").setAttribute("placeholder", t("titlePlaceholder"));
+  $("message").setAttribute("placeholder", t("messagePlaceholder"));
+  $("name").setAttribute("placeholder", t("namePlaceholder"));
+
+  document.querySelectorAll("#eventSeg button").forEach((b) => {
+    b.textContent = b.dataset.v === "enter" ? t("eventEnter") : t("eventLeave");
+  });
+}
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -147,13 +284,15 @@ function el(tag, cls, text) {
 }
 
 async function api(path, method = "GET", body) {
+  const headers = { "X-Language": locale };
+  if (body) headers["Content-Type"] = "application/json";
   const res = await fetch(path, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Fehler " + res.status);
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
@@ -178,9 +317,14 @@ function selectedName(sel) {
 
 function fmtTime(ts) {
   if (!ts) return "";
-  return new Date(ts * 1000).toLocaleString("de-DE", {
-    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  const date = new Date(ts * 1000);
+  const formatter = new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
+  return formatter.format(date);
 }
 
 function ruleCard(r) {
@@ -190,29 +334,31 @@ function ruleCard(r) {
   const top = el("div", "rule-top");
   const left = el("div");
   left.appendChild(el("div", "rule-name", r.name));
-  const verb = r.event === "enter" ? "betritt" : "verlässt";
-  left.appendChild(el("div", "rule-sub",
-    `${r.entity_name} ${verb} ${r.zone_name} → ${r.notify_name}`));
-  if (r.last_triggered) left.appendChild(el("div", "rule-sub", "Zuletzt: " + fmtTime(r.last_triggered)));
+  const verb = r.event === "enter" ? t("eventEnter") : t("eventLeave");
+  left.appendChild(el("div", "rule-sub", `${r.entity_name} ${verb} ${r.zone_name} → ${r.notify_name}`));
+  if (r.last_triggered) left.appendChild(el("div", "rule-sub", t("footerLast", { time: fmtTime(r.last_triggered) })));
   top.appendChild(left);
-  const badge = el("div", "badge" + (done ? " done" : paused ? " paused" : ""),
-    done ? "fertig" : paused ? "pausiert" : `noch ${r.remaining}× von ${r.total}`);
+  const badge = el(
+    "div",
+    "badge" + (done ? " done" : paused ? " paused" : ""),
+    done ? t("statusDone") : paused ? t("statusPaused") : t("statusRemaining", { remaining: r.remaining, total: r.total })
+  );
   top.appendChild(badge);
   card.appendChild(top);
 
   const actions = el("div", "actions");
   if (!done) {
-    const t = el("button", "", paused ? "▶ Fortsetzen" : "⏸ Pausieren");
-    t.onclick = async () => render(await api(`api/rules/${r.id}/toggle`, "POST"));
-    actions.appendChild(t);
+    const toggle = el("button", "", paused ? t("resume") : t("pause"));
+    toggle.onclick = async () => render(await api(`api/rules/${r.id}/toggle`, "POST"));
+    actions.appendChild(toggle);
   }
-  const test = el("button", "", "Test senden");
+  const test = el("button", "", t("sendTest"));
   test.onclick = async () => {
-    try { await api(`api/rules/${r.id}/test`, "POST"); test.textContent = "Gesendet ✓"; }
+    try { await api(`api/rules/${r.id}/test`, "POST"); test.textContent = t("sent"); }
     catch (e) { alert(e.message); }
   };
   actions.appendChild(test);
-  const del = el("button", "del", "Löschen");
+  const del = el("button", "del", t("delete"));
   del.onclick = async () => render(await api(`api/rules/${r.id}`, "DELETE"));
   actions.appendChild(del);
   card.appendChild(actions);
@@ -224,27 +370,28 @@ function render(state) {
   active.textContent = ""; done.textContent = ""; log.textContent = "";
   const a = state.rules.filter((r) => r.remaining > 0);
   const d = state.rules.filter((r) => r.remaining <= 0);
-  if (!a.length) active.appendChild(el("div", "empty", "Keine aktiven Regeln"));
+  if (!a.length) active.appendChild(el("div", "empty", t("emptyActive")));
   a.forEach((r) => active.appendChild(ruleCard(r)));
   d.forEach((r) => done.appendChild(ruleCard(r)));
   $("doneHead").style.display = d.length ? "" : "none";
-  if (!state.log.length) log.appendChild(el("div", "", "Noch nichts passiert"));
+  if (!state.log.length) log.appendChild(el("div", "", t("emptyLog")));
   state.log.slice(0, 15).forEach((l) => log.appendChild(el("div", "", `${fmtTime(l.ts)} – ${l.text}`)));
 }
 
 async function refresh() {
-  try { render(await api("api/rules")); } catch (e) { /* nächster Versuch */ }
+  try { render(await api("api/rules")); } catch (e) { /* retry next time */ }
 }
 
 async function init() {
+  applyTranslations();
   try {
     opts = await api("api/options");
   } catch (e) {
-    $("err").textContent = "Home Assistant nicht erreichbar: " + e.message;
+    $("err").textContent = t("haUnavailable", { message: e.message });
   }
-  fillSelect($("entity"), opts.entities, "Keine Geräte gefunden");
-  fillSelect($("zone"), opts.zones, "Keine Zonen gefunden");
-  fillSelect($("notify"), opts.notify, "Keine Notify-Dienste gefunden");
+  fillSelect($("entity"), opts.entities, t("noDevices"));
+  fillSelect($("zone"), opts.zones, t("noZones"));
+  fillSelect($("notify"), opts.notify, t("noNotify"));
   await refresh();
   setInterval(refresh, 5000);
 }
@@ -261,7 +408,7 @@ $("plus").onclick = () => { count = Math.min(99, count + 1); $("count").textCont
 $("create").onclick = async () => {
   $("err").textContent = "";
   const entity = $("entity").value, zone = $("zone").value, notify = $("notify").value;
-  if (!entity || !zone || !notify) { $("err").textContent = "Bitte alle Felder auswählen."; return; }
+  if (!entity || !zone || !notify) { $("err").textContent = t("errorSelect"); return; }
   $("create").disabled = true;
   try {
     const state = await api("api/rules", "POST", {

@@ -28,6 +28,88 @@ LOG_MAX = 50
 
 NOT_AVAILABLE = (None, "unknown", "unavailable")
 
+TRANSLATIONS = {
+    "de": {
+        "invalid_input": "Ungültige Eingabe",
+        "invalid_event": "Ungültiges Ereignis",
+        "count_range": "Anzahl muss zwischen 1 und 99 liegen",
+        "invalid_entity": "Ungültige Entität",
+        "invalid_notify": "Ungültiger Notify-Dienst",
+        "not_found": "Nicht gefunden",
+        "new_rule": "Neue Regel",
+        "default_title": "Standort-Alarm",
+        "default_message": "{person} hat {zone} {event}",
+        "rule_created": "Regel „{name}“ erstellt ({count}×)",
+        "rule_triggered_remaining": "„{name}“ ausgelöst – noch {remaining}×",
+        "rule_finished": "„{name}“ ausgelöst – fertig, Regel läuft ab",
+        "send_failed": "Senden fehlgeschlagen ({rule_id}): {error}",
+        "auth_failed": "Auth fehlgeschlagen: {data}",
+        "websocket_connected": "Mit Home Assistant verbunden",
+        "event_error": "Fehler bei Event-Verarbeitung",
+        "websocket_lost": "WebSocket getrennt: {error}",
+        "zone_home": "Zuhause",
+        "event_enter": "betritt",
+        "event_leave": "verlässt",
+        "event_enter_verb": "betreten",
+        "event_leave_verb": "verlassen",
+        "notify_invalid": "Ungültiger Notify-Dienst: {notify}",
+        "load_error": "rules.json konnte nicht gelesen werden: {error}",
+    },
+    "en": {
+        "invalid_input": "Invalid input",
+        "invalid_event": "Invalid event",
+        "count_range": "Count must be between 1 and 99",
+        "invalid_entity": "Invalid entity",
+        "invalid_notify": "Invalid notify service",
+        "not_found": "Not found",
+        "new_rule": "New rule",
+        "default_title": "Location alert",
+        "default_message": "{person} has {zone} {event}",
+        "rule_created": "Rule “{name}” created ({count}×)",
+        "rule_triggered_remaining": "“{name}” triggered – {remaining}× remaining",
+        "rule_finished": "“{name}” triggered – done, rule expires",
+        "send_failed": "Send failed ({rule_id}): {error}",
+        "auth_failed": "Authentication failed: {data}",
+        "websocket_connected": "Connected to Home Assistant",
+        "event_error": "Error while processing event",
+        "websocket_lost": "WebSocket disconnected: {error}",
+        "zone_home": "Home",
+        "event_enter": "enters",
+        "event_leave": "leaves",
+        "event_enter_verb": "entered",
+        "event_leave_verb": "left",
+        "notify_invalid": "Invalid notify service: {notify}",
+        "load_error": "rules.json could not be read: {error}",
+    },
+}
+
+
+def request_locale(request=None):
+    preferred = ""
+    if request is not None:
+        preferred = request.headers.get("X-Language") or request.headers.get("Accept-Language") or ""
+    if not preferred and os.environ.get("LANG"):
+        preferred = os.environ.get("LANG", "")
+    if preferred:
+        lang = preferred.split(",")[0].split(";")[0].strip().lower()
+        if lang.startswith("de"):
+            return "de"
+        if lang.startswith("en"):
+            return "en"
+    if os.environ.get("LANG", "").lower().startswith("de"):
+        return "de"
+    return "en"
+
+
+def t(key, locale="en", **kwargs):
+    locale = locale if locale in TRANSLATIONS else "en"
+    text = TRANSLATIONS[locale].get(key, TRANSLATIONS["en"].get(key, key))
+    try:
+        return text.format(**kwargs)
+    except (KeyError, ValueError):
+        return text
+
+
 state = {"rules": [], "log": []}
 lock = asyncio.Lock()
 
@@ -42,7 +124,7 @@ def load():
     except FileNotFoundError:
         pass
     except Exception as exc:  # noqa: BLE001
-        log.error("rules.json konnte nicht gelesen werden: %s", exc)
+        log.error(t("load_error", locale="en", error=exc))
 
 
 def save():
@@ -82,10 +164,10 @@ def friendly(st):
     return attrs.get("friendly_name") or (st or {}).get("entity_id", "?")
 
 
-async def zone_state_name(session, zone_entity):
+async async def zone_state_name(session, zone_entity):
     """Wert, den ein Tracker/Person-State annimmt, wenn er in der Zone ist."""
     if zone_entity == "zone.home":
-        return "home", "Zuhause"
+        return "home", "Home"
     try:
         st = await ha_get(session, f"/states/{zone_entity}")
         name = st.get("attributes", {}).get("friendly_name") or zone_entity.split(".", 1)[1]
@@ -96,8 +178,8 @@ async def zone_state_name(session, zone_entity):
 
 
 # ------------------------------------------------------------ Benachrichtigung
-def render(template, person, zone, event):
-    verb = "betreten" if event == "enter" else "verlassen"
+def render(template, person, zone, event, locale="en"):
+    verb = t("event_enter_verb" if event == "enter" else "event_leave_verb", locale=locale)
     return (
         template.replace("{person}", person)
         .replace("{zone}", zone)
@@ -106,24 +188,26 @@ def render(template, person, zone, event):
 
 
 async def send_notification(session, rule, person, zone_label):
+    locale = rule.get("locale", "en")
     domain, _, service = rule["notify"].partition(".")
     if domain != "notify" or not service:
-        raise RuntimeError(f"Ungültiger Notify-Dienst: {rule['notify']}")
+        raise RuntimeError(t("notify_invalid", locale=locale, notify=rule["notify"]))
     payload = {
-        "title": render(rule.get("title") or "Standort-Alarm", person, zone_label, rule["event"]),
-        "message": render(rule["message"], person, zone_label, rule["event"]),
+        "title": render(rule.get("title") or t("default_title", locale=locale), person, zone_label, rule["event"], locale=locale),
+        "message": render(rule["message"], person, zone_label, rule["event"], locale=locale),
     }
     await ha_post(session, f"/services/notify/{service}", payload)
 
 
 async def fire_rule(session, rule, person, zone_label):
+    locale = rule.get("locale", "en")
     async with lock:
         if rule["remaining"] <= 0 or not rule.get("enabled", True):
             return
         try:
             await send_notification(session, rule, person, zone_label)
         except Exception as exc:  # noqa: BLE001
-            log.error("Senden fehlgeschlagen (%s): %s", rule["id"], exc)
+            log.error(t("send_failed", locale=locale, rule_id=rule["id"], error=exc))
             add_log(f"Fehler bei „{rule['name']}“: {exc}")
             save()
             return
@@ -131,9 +215,9 @@ async def fire_rule(session, rule, person, zone_label):
         rule["last_triggered"] = time.time()
         if rule["remaining"] <= 0:
             rule["finished"] = time.time()
-            add_log(f"„{rule['name']}“ ausgelöst – fertig, Regel läuft ab")
+            add_log(t("rule_finished", locale=locale, name=rule["name"]))
         else:
-            add_log(f"„{rule['name']}“ ausgelöst – noch {rule['remaining']}×")
+            add_log(t("rule_triggered_remaining", locale=locale, name=rule["name"], remaining=rule["remaining"]))
         save()
 
 
@@ -169,9 +253,9 @@ async def ws_loop(app):
                 await ws.send_json({"type": "auth", "access_token": TOKEN})
                 msg = await ws.receive_json()
                 if msg.get("type") != "auth_ok":
-                    raise RuntimeError(f"Auth fehlgeschlagen: {msg}")
+                    raise RuntimeError(t("auth_failed", locale="en", data=msg))
                 await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": "state_changed"})
-                log.info("Mit Home Assistant verbunden")
+                log.info(t("websocket_connected", locale="en"))
                 async for m in ws:
                     if m.type == WSMsgType.TEXT:
                         d = m.json()
@@ -179,13 +263,13 @@ async def ws_loop(app):
                             try:
                                 await on_state_changed(session, d["event"]["data"])
                             except Exception:  # noqa: BLE001
-                                log.exception("Fehler bei Event-Verarbeitung")
+                                log.exception(t("event_error", locale="en"))
                     elif m.type in (WSMsgType.CLOSED, WSMsgType.ERROR):
                         break
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            log.warning("WebSocket getrennt: %s", exc)
+            log.warning(t("websocket_lost", locale="en", error=exc))
         await asyncio.sleep(5)
 
 
@@ -210,6 +294,7 @@ async def index(_request):
 
 async def api_options(request):
     session = request.app["session"]
+    locale = request_locale(request)
     states = await ha_get(session, "/states")
     services = await ha_get(session, "/services")
     entities = [
@@ -219,7 +304,7 @@ async def api_options(request):
     ]
     entities.sort(key=lambda e: (not e["id"].startswith("person."), e["name"].lower()))
     zones = [
-        {"id": s["entity_id"], "name": "Zuhause" if s["entity_id"] == "zone.home" else friendly(s)}
+        {"id": s["entity_id"], "name": t("zone_home", locale=locale) if s["entity_id"] == "zone.home" else friendly(s)}
         for s in states
         if s["entity_id"].startswith("zone.")
     ]
@@ -246,6 +331,7 @@ async def api_rules(_request):
 
 
 async def api_create(request):
+    locale = request_locale(request)
     try:
         body = await request.json()
         entity = str(body["entity"])
@@ -255,22 +341,22 @@ async def api_create(request):
         count = int(body.get("count", 1))
         message = str(body.get("message", "")).strip()
     except (KeyError, ValueError, TypeError):
-        return web.json_response({"error": "Ungültige Eingabe"}, status=400)
+        return web.json_response({"error": t("invalid_input", locale=locale)}, status=400)
     if event not in ("enter", "leave"):
-        return web.json_response({"error": "Ungültiges Ereignis"}, status=400)
+        return web.json_response({"error": t("invalid_event", locale=locale)}, status=400)
     if not 1 <= count <= 99:
-        return web.json_response({"error": "Anzahl muss zwischen 1 und 99 liegen"}, status=400)
+        return web.json_response({"error": t("count_range", locale=locale)}, status=400)
     if not entity.startswith(("person.", "device_tracker.")) or not zone.startswith("zone."):
-        return web.json_response({"error": "Ungültige Entität"}, status=400)
+        return web.json_response({"error": t("invalid_entity", locale=locale)}, status=400)
     if not notify.startswith("notify."):
-        return web.json_response({"error": "Ungültiger Notify-Dienst"}, status=400)
+        return web.json_response({"error": t("invalid_notify", locale=locale)}, status=400)
     if not message:
-        message = "{person} hat {zone} {event}"
+        message = t("default_message", locale=locale, person="{person}", zone="{zone}", event="{event}")
     name = str(body.get("name", "")).strip() or None
     async with lock:
         rule = {
             "id": uuid.uuid4().hex[:8],
-            "name": name or "Neue Regel",
+            "name": name or t("new_rule", locale=locale),
             "entity": entity,
             "entity_name": str(body.get("entity_name", entity)),
             "zone": zone,
@@ -278,19 +364,20 @@ async def api_create(request):
             "event": event,
             "notify": notify,
             "notify_name": str(body.get("notify_name", notify)),
-            "title": str(body.get("title", "")).strip() or "Standort-Alarm",
+            "title": str(body.get("title", "")).strip() or t("default_title", locale=locale),
             "message": message,
             "total": count,
             "remaining": count,
             "enabled": True,
             "created": time.time(),
             "last_triggered": None,
+            "locale": locale,
         }
         if not name:
-            verb = "betritt" if event == "enter" else "verlässt"
+            verb = t("event_enter" if event == "enter" else "event_leave", locale=locale)
             rule["name"] = f"{rule['entity_name']} {verb} {rule['zone_name']}"
         state["rules"].append(rule)
-        add_log(f"Regel „{rule['name']}“ erstellt ({count}×)")
+        add_log(t("rule_created", locale=locale, name=rule["name"], count=count))
         save()
     return web.json_response(public_state())
 
@@ -323,9 +410,10 @@ async def api_clear_done(_request):
 
 async def api_test(request):
     rid = request.match_info["rid"]
+    locale = request_locale(request)
     rule = next((r for r in state["rules"] if r["id"] == rid), None)
     if not rule:
-        return web.json_response({"error": "Nicht gefunden"}, status=404)
+        return web.json_response({"error": t("not_found", locale=locale)}, status=404)
     try:
         await send_notification(request.app["session"], rule, rule["entity_name"], rule["zone_name"])
     except Exception as exc:  # noqa: BLE001
